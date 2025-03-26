@@ -2,9 +2,8 @@ pipeline {
     agent any
     
     tools {
-        // Must match EXACTLY what's configured in Jenkins
-        maven 'maven3'  // lowercase
-        jdk 'JDK17'     // uppercase
+        maven 'maven3'
+        jdk 'JDK17'
     }
     
     environment {
@@ -12,17 +11,6 @@ pipeline {
     }
     
     stages {
-        stage('Verify Environment') {
-            steps {
-                sh '''
-                    echo "Java home: $JAVA_HOME"
-                    java -version
-                    echo "Maven home: $MAVEN_HOME"
-                    mvn --version
-                '''
-            }
-        }
-        
         stage('Checkout') {
             steps {
                 checkout scm
@@ -47,13 +35,6 @@ pipeline {
                     docker.build("financeme-account-service:${env.BUILD_ID}")
                 }
             }
-        }
-    }
-    
-    post {
-        always {
-            junit '**/target/surefire-reports/*.xml'
-            echo 'Pipeline completed successfully'
         }
     }
 }
