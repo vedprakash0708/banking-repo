@@ -1,5 +1,5 @@
----
-- hosts: all
+- hosts: localhost
+  connection: local
   become: yes
   tasks:
     - name: Install Docker
@@ -7,6 +7,11 @@
         name: docker.io
         state: present
         update_cache: yes
+        
+    - name: Install Docker Compose
+      apt:
+        name: docker-compose
+        state: present
         
     - name: Install Java
       apt:
@@ -18,9 +23,9 @@
         name: maven
         state: present
         
-    - name: Add Jenkins user to docker group
+    - name: Add current user to docker group
       user:
-        name: jenkins
+        name: "{{ ansible_user_id }}"
         groups: docker
         append: yes
         
