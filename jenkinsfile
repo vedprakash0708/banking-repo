@@ -2,8 +2,9 @@ pipeline {
     agent any
     
     tools {
-        maven 'Maven3'  // Make sure this matches your Maven tool name in Jenkins
-        jdk 'JDK17'     // Changed from JDK11 to JDK17
+        // Must match EXACTLY what's configured in Jenkins
+        maven 'maven3'  // lowercase
+        jdk 'JDK17'     // uppercase
     }
     
     environment {
@@ -11,6 +12,17 @@ pipeline {
     }
     
     stages {
+        stage('Verify Environment') {
+            steps {
+                sh '''
+                    echo "Java home: $JAVA_HOME"
+                    java -version
+                    echo "Maven home: $MAVEN_HOME"
+                    mvn --version
+                '''
+            }
+        }
+        
         stage('Checkout') {
             steps {
                 checkout scm
@@ -19,7 +31,6 @@ pipeline {
         
         stage('Build') {
             steps {
-                sh 'mvn --version'
                 sh 'mvn clean package -DskipTests'
             }
         }
@@ -37,32 +48,12 @@ pipeline {
                 }
             }
         }
-        
-        stage('Docker Run') {
-            steps {
-                script {
-                    // Stop any existing container first
-                    sh 'docker stop financeme-app || true'
-                    sh 'docker rm financeme-app || true'
-                    // Run new container
-                    docker.image("financeme-account-service:${env.BUILD_ID}").run(
-                        '--name financeme-app -p 8082:8082'
-                    )
-                }
-            }
-        }
     }
     
     post {
         always {
-            echo 'Pipeline completed - see test reports below'
             junit '**/target/surefire-reports/*.xml'
-        }
-        success {
-            echo 'Pipeline succeeded! Application should be running at http://localhost:8082'
-        }
-        failure {
-            echo 'Pipeline failed! Check logs for details.'
+            echo 'Pipeline completed successfully'
         }
     }
 }
