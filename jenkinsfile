@@ -1,44 +1,76 @@
-pipeline{
+pipeline {
     agent any
-    stages{
-        stage('checkout the code from github'){
-            steps{
-                git branch: 'main', // Changed from 'master' to 'main'
+    
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main',
                      url: 'https://github.com/vedprakash0708/banking-repo.git'
-
-                 echo 'github url checkout'
+                echo 'GitHub repository checked out successfully'
             }
         }
-        stage('codecompile with akshat'){
-            steps{
-                echo 'starting compiling'
+        
+        stage('Compile Code') {
+            steps {
+                echo 'Starting compilation'
                 sh 'mvn compile'
             }
         }
-        stage('codetesting with akshat'){
-            steps{
+        
+        stage('Run Tests') {
+            steps {
                 sh 'mvn test'
+                junit '**/target/surefire-reports/*.xml'  // Archive test results
             }
         }
-        stage('qa with akshat'){
-            steps{
+        
+        stage('Quality Analysis') {
+            steps {
                 sh 'mvn checkstyle:checkstyle'
+                // Consider adding: archiveArtifacts '**/target/checkstyle-result.xml'
             }
         }
-        stage('package with akshat'){
-            steps{
+        
+        stage('Package Application') {
+            steps {
                 sh 'mvn package'
+                archiveArtifacts 'target/*.jar'  // Archive the built package
             }
         }
-        stage('run dockerfile'){
-          steps{
-               sh 'docker build -t myimg .'
-           }
-         }
-        stage('port expose'){
-            steps{
-                sh 'docker run -dt -p 8091:8091 --name c000 myimg'
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Tag with build number for traceability
+                    sh 'docker build -t myimg:${BUILD_NUMBER} .'
+                    sh 'docker tag myimg:${BUILD_NUMBER} myimg:latest'
+                }
             }
-        }   
+        }
+        
+        stage('Run Container') {
+            steps {
+                script {
+                    // Stop and remove existing container if running
+                    sh 'docker stop c000 || true'
+                    sh 'docker rm c000 || true'
+                    
+                    // Run new container
+                    sh 'docker run -dt -p 8091:8091 --name c000 myimg:latest'
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline completed - cleaning up'
+            // Clean up Docker to prevent disk space issues
+            sh 'docker system prune -f || true'
+        }
+        failure {
+            echo 'Pipeline failed - sending notification'
+            // Add notification logic here (email, Slack, etc.)
+        }
     }
 }
