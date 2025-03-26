@@ -1,73 +1,42 @@
-pipeline {
+pipeline{
     agent any
-    
-    environment {
-        DOCKER_HUB_CREDENTIALS = credentials('docker-hub')
-    }
-    
-    stages {
-        stage('Checkout') {
-            steps {
-                git branch: 'main', 
-                url: 'https://github.com/vedprakash0708/banking-repo.git'
+    stages{
+        stage('checkout the code from github'){
+            steps{
+                 git url: 'https://github.com/vedprakash0708/banking-repo/'
+                 echo 'github url checkout'
             }
         }
-        
-        stage('Build') {
-            steps {
-                sh 'mvn clean package'
+        stage('codecompile with akshat'){
+            steps{
+                echo 'starting compiling'
+                sh 'mvn compile'
             }
         }
-        
-        stage('Test') {
-            steps {
+        stage('codetesting with akshat'){
+            steps{
                 sh 'mvn test'
-                junit '**/target/surefire-reports/*.xml'
             }
         }
-        
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    docker.withRegistry('', env.DOCKER_HUB_CREDENTIALS) {
-                        dockerImage = docker.build("financeme/account-service:${env.BUILD_NUMBER}")
-                        dockerImage.push()
-                    }
-                }
+        stage('qa with akshat'){
+            steps{
+                sh 'mvn checkstyle:checkstyle'
             }
         }
-        
-        stage('Deploy to Local') {
-            steps {
-                script {
-                    sh 'docker-compose -f Docker-compose.yml down || true'
-                    sh """
-                    sed -i 's|financeme/account-service:.*|financeme/account-service:${env.BUILD_NUMBER}|g' Docker-compose.yml
-                    """
-                    sh 'docker-compose -f Docker-compose.yml up -d'
-                }
+        stage('package with akshat'){
+            steps{
+                sh 'mvn package'
             }
         }
-    }
-    
-    post {
-        always {
-            // Either use this (explicit node with label):
-            node('master') {
-                script {
-                    archiveArtifacts artifacts: 'target/*.jar', 
-                    fingerprint: true
-                    sh 'docker system prune -f || true'
-                }
+        stage('run dockerfile'){
+          steps{
+               sh 'docker build -t myimg .'
+           }
+         }
+        stage('port expose'){
+            steps{
+                sh 'docker run -dt -p 8091:8091 --name c000 myimg'
             }
-            // OR this (simpler alternative without node):
-            /*
-            script {
-                archiveArtifacts artifacts: 'target/*.jar', 
-                fingerprint: true
-                sh 'docker system prune -f || true'
-            }
-            */
-        }
+        }   
     }
 }
