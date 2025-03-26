@@ -52,13 +52,22 @@ pipeline {
     
     post {
         always {
-            node {  // This wraps post actions in node context
+            // Either use this (explicit node with label):
+            node('master') {
                 script {
                     archiveArtifacts artifacts: 'target/*.jar', 
                     fingerprint: true
                     sh 'docker system prune -f || true'
                 }
             }
+            // OR this (simpler alternative without node):
+            /*
+            script {
+                archiveArtifacts artifacts: 'target/*.jar', 
+                fingerprint: true
+                sh 'docker system prune -f || true'
+            }
+            */
         }
     }
 }
