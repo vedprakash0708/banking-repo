@@ -1,10 +1,6 @@
 pipeline {
     agent any
     
-    environment {
-        DOCKER_HUB_CREDENTIALS = credentials('docker-hub')
-    }
-    
     stages {
         stage('Checkout') {
             steps {
@@ -28,10 +24,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.withRegistry('', env.DOCKER_HUB_CREDENTIALS) {
-                        dockerImage = docker.build("financeme/account-service:${env.BUILD_NUMBER}")
-                        dockerImage.push()
-                    }
+                    // For local Docker without credentials
+                    dockerImage = docker.build("financeme/account-service:${env.BUILD_NUMBER}")
                 }
             }
         }
@@ -39,16 +33,9 @@ pipeline {
         stage('Deploy to Local') {
             steps {
                 script {
-                    // Stop and remove existing container if it exists
                     sh 'docker-compose down || true'
-                    
-                    // Update the docker-compose with the new image
                     sh "sed -i 's|financeme/account-service:.*|financeme/account-service:${env.BUILD_NUMBER}|' docker-compose.yml"
-                    
-                    // Start the services
                     sh 'docker-compose up -d'
-                    
-                    // Run automated tests against local deployment
                     sh 'mvn verify -Pselenium-tests'
                 }
             }
@@ -57,11 +44,17 @@ pipeline {
     
     post {
         always {
-            // Archive artifacts without using sh
-            archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
-            
-            // Clean up workspace (alternative to docker system prune)
-            cleanWs()
+            script {
+                // Local cleanup commands
+                try {
+                    sh 'docker system prune -f'
+                } catch (Exception e) {
+                    echo "Docker cleanup failed: ${e.message}"
+                }
+                
+                // Archive artifacts within node context
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+            }
         }
     }
 }
