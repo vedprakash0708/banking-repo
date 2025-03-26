@@ -2,14 +2,8 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: 'account-service'
+  - job_name: 'banking-app'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['account-service:8080']
-      
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['prometheus:9090']
-basic_auth:
-  username: 'prometheus-monitor'
-  password: '111ce465cbb2cf807f248d7ee8dc9bba08'      
+      - targets: ['host.docker.internal:8091']  # For Mac/Windows
+        # For Linux, use your machine's IP instead
