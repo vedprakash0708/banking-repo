@@ -1,78 +1,52 @@
 pipeline {
     agent any
     
-    options {
-        timeout(time: 30, unit: 'MINUTES')
+    tools {
+        maven 'maven3'
+        jdk 'JDK17'
     }
     
     environment {
-        PROMETHEUS_CONFIG = 'prometheus.yml'
-        GRAFANA_URL = 'http://localhost:3000'
+        DOCKER_HOST = "unix:///var/run/docker.sock"
     }
     
     stages {
+        stage('Verify Environment') {
+            steps {
+                sh '''
+                    echo "Workspace: ${WORKSPACE}"
+                    echo "Java:"
+                    java -version
+                    echo "Maven:"
+                    mvn --version
+                    echo "Docker:"
+                    docker --version
+                '''
+            }
+        }
+        
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
         
-        stage('Start Monitoring Stack') {
+        stage('Build') {
             steps {
-                script {
-                    sh '''
-                        if [ ! -f docker-compose-monitoring.yml ]; then
-                            echo "ERROR: docker-compose-monitoring.yml not found"
-                            exit 1
-                        fi
-                        docker-compose -f docker-compose-monitoring.yml up -d
-                        sleep 30
-                    '''
-                }
+                sh 'mvn clean package -DskipTests'
             }
         }
         
-        stage('Configure Monitoring') {
+        stage('Test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+        
+        stage('Docker Build') {
             steps {
                 script {
-                    // Configure Prometheus
-                    sh """
-                        echo 'scrape_configs:
-                          - job_name: "jenkins"
-                            metrics_path: "/prometheus"
-                            static_configs:
-                              - targets: ["jenkins:8080"]' > ${PROMETHEUS_CONFIG}
-                        
-                        docker cp ${PROMETHEUS_CONFIG} prometheus:/etc/prometheus/
-                        curl -X POST http://localhost:9090/-/reload
-                    """
-                    
-                    // Configure Grafana
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'grafana-admin',
-                            usernameVariable: 'GRAFANA_USER',
-                            passwordVariable: 'GRAFANA_PASSWORD'
-                        )
-                    ]) {
-                        sh """
-                            curl -X POST \
-                            "${GRAFANA_URL}/api/dashboards/import" \
-                            -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" \
-                            -H 'Content-Type: application/json' \
-                            -d '{
-                                "dashboard": {
-                                    "id": null,
-                                    "title": "Jenkins Metrics",
-                                    "tags": ["jenkins"],
-                                    "timezone": "browser",
-                                    "schemaVersion": 16,
-                                    "version": 0
-                                },
-                                "overwrite": true
-                            }'
-                        """
-                    }
+                    docker.build("financeme-account-service:${env.BUILD_ID}")
                 }
             }
         }
@@ -80,13 +54,9 @@ pipeline {
     
     post {
         always {
-            echo 'Cleaning up...'
-            sh 'rm -f ${PROMETHEUS_CONFIG} || true'
-        }
-        success {
-            echo 'Monitoring stack configured successfully!'
-            echo "Prometheus: http://localhost:9090"
-            echo "Grafana: ${GRAFANA_URL} (admin:${GRAFANA_PASSWORD})"
+            junit '**/target/surefire-reports/*.xml'
+            archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+            echo 'Pipeline completed successfully'
         }
     }
 }
