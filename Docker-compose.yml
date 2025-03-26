@@ -1,5 +1,4 @@
 version: '3'
-
 services:
   prometheus:
     image: prom/prometheus
@@ -7,15 +6,22 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-lifecycle'
+
   grafana:
     image: grafana/grafana
     ports:
       - "3000:3000"
     volumes:
-      - grafana-storage:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:
       - prometheus
 
 volumes:
-  grafana-storage:
+  prometheus_data:
+  grafana_data:
