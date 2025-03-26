@@ -2,9 +2,8 @@ pipeline {
     agent any
     
     tools {
-        // Must match EXACTLY what's in Jenkins Global Tool Configuration
-        maven 'maven3'  // all lowercase
-        jdk 'JDK17'     // uppercase
+        maven 'maven3'
+        jdk 'JDK17'
     }
     
     environment {
@@ -12,13 +11,16 @@ pipeline {
     }
     
     stages {
-        stage('Verify Workspace') {
+        stage('Verify Environment') {
             steps {
                 sh '''
-                    echo "Current directory: $(pwd)"
-                    ls -la
-                    mvn --version
+                    echo "Workspace: ${WORKSPACE}"
+                    echo "Java:"
                     java -version
+                    echo "Maven:"
+                    mvn --version
+                    echo "Docker:"
+                    docker --version
                 '''
             }
         }
@@ -53,7 +55,8 @@ pipeline {
     post {
         always {
             junit '**/target/surefire-reports/*.xml'
-            echo 'Pipeline completed. Workspace: ${WORKSPACE}'
+            archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+            echo 'Pipeline completed successfully'
         }
     }
 }
