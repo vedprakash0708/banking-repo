@@ -1,97 +1,92 @@
-stage('Start Monitoring Stack') {
-    steps {
-        script {
-            // Verify docker-compose file exists
-            sh '''
-                if [ ! -f docker-compose-monitoring.yml ]; then
-                    echo "ERROR: docker-compose-monitoring.yml not found!"
-                    exit 1
-                fi
-            '''
-            
-            // Start containers with health checks
-            sh '''
-                docker-compose -f docker-compose-monitoring.yml up -d
-                
-                # Wait for services to become healthy
-                timeout 60s bash -c '
-                    while ! docker ps --format "{{.Status}}" | grep -q "(healthy)"; do
-                        echo "Waiting for containers to start..."
-                        sleep 5
-                    done
-                ' || echo "Warning: Containers took too long to start"
-            '''
+pipeline {
+    agent any
+    
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+    }
+    
+    environment {
+        PROMETHEUS_CONFIG = 'prometheus.yml'
+        GRAFANA_URL = 'http://localhost:3000'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Start Monitoring Stack') {
+            steps {
+                script {
+                    sh '''
+                        if [ ! -f docker-compose-monitoring.yml ]; then
+                            echo "ERROR: docker-compose-monitoring.yml not found"
+                            exit 1
+                        fi
+                        docker-compose -f docker-compose-monitoring.yml up -d
+                        sleep 30
+                    '''
+                }
+            }
+        }
+        
+        stage('Configure Monitoring') {
+            steps {
+                script {
+                    // Configure Prometheus
+                    sh """
+                        echo 'scrape_configs:
+                          - job_name: "jenkins"
+                            metrics_path: "/prometheus"
+                            static_configs:
+                              - targets: ["jenkins:8080"]' > ${PROMETHEUS_CONFIG}
+                        
+                        docker cp ${PROMETHEUS_CONFIG} prometheus:/etc/prometheus/
+                        curl -X POST http://localhost:9090/-/reload
+                    """
+                    
+                    // Configure Grafana
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'grafana-admin',
+                            usernameVariable: 'GRAFANA_USER',
+                            passwordVariable: 'GRAFANA_PASSWORD'
+                        )
+                    ]) {
+                        sh """
+                            curl -X POST \
+                            "${GRAFANA_URL}/api/dashboards/import" \
+                            -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" \
+                            -H 'Content-Type: application/json' \
+                            -d '{
+                                "dashboard": {
+                                    "id": null,
+                                    "title": "Jenkins Metrics",
+                                    "tags": ["jenkins"],
+                                    "timezone": "browser",
+                                    "schemaVersion": 16,
+                                    "version": 0
+                                },
+                                "overwrite": true
+                            }'
+                        """
+                    }
+                }
+            }
         }
     }
-}
-
-stage('Configure Monitoring') {
-    environment {
-        GRAFANA_URL = "http://localhost:3000"
-        PROMETHEUS_URL = "http://localhost:9090"
-    }
-    steps {
-        script {
-            // 1. Configure Prometheus with credentials
-            withCredentials([
-                string(credentialsId: 'prometheus-monitor', variable: 'PROMETHEUS_USER'),
-                string(credentialsId: '111ce465cbb2cf807f248d7ee8dc9bba08', variable: 'PROMETHEUS_TOKEN')
-            ]) {
-                sh '''
-                    # Create Prometheus config with credentials
-                    cat <<EOF > prometheus-jenkins.yml
-scrape_configs:
-  - job_name: 'jenkins'
-    metrics_path: '/prometheus'
-    basic_auth:
-      username: '${PROMETHEUS_USER}'
-      password: '${PROMETHEUS_TOKEN}'
-    static_configs:
-      - targets: ['jenkins:8080']
-EOF
-                    
-                    # Apply configuration
-                    docker cp prometheus-jenkins.yml prometheus:/etc/prometheus/prometheus.yml
-                    curl -X POST "${PROMETHEUS_URL}/-/reload"
-                    rm -f prometheus-jenkins.yml
-                '''
-            }
-
-            // 2. Configure Grafana with credentials
-            withCredentials([
-                usernamePassword(credentialsId: 'grafana-admin', 
-                               usernameVariable: 'GRAFANA_USER', 
-                               passwordVariable: 'GRAFANA_PASSWORD')
-            ]) {
-                sh '''
-                    # Import Jenkins dashboard
-                    curl -X POST \
-                    "${GRAFANA_URL}/api/dashboards/import" \
-                    -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" \
-                    -H "Content-Type: application/json" \
-                    -d '{
-                        "dashboard": $(curl -s https://grafana.com/api/dashboards/9964/revisions/1/download),
-                        "overwrite": true,
-                        "inputs": [{
-                            "name": "DS_PROMETHEUS",
-                            "type": "datasource",
-                            "pluginId": "prometheus",
-                            "value": "Prometheus"
-                        }]
-                    }'
-                    
-                    # Set Prometheus as default datasource
-                    curl -X PUT \
-                    "${GRAFANA_URL}/api/org/preferences" \
-                    -u "${GRAFANA_USER}:${GRAFANA_PASSWORD}" \
-                    -H "Content-Type: application/json" \
-                    -d '{
-                        "defaultDashboardId": 9964,
-                        "theme": "",
-                        "homeDashboardId": 9964
-                    }'
-                '''
-            }
+    
+    post {
+        always {
+            echo 'Cleaning up...'
+            sh 'rm -f ${PROMETHEUS_CONFIG} || true'
+        }
+        success {
+            echo 'Monitoring stack configured successfully!'
+            echo "Prometheus: http://localhost:9090"
+            echo "Grafana: ${GRAFANA_URL} (admin:${GRAFANA_PASSWORD})"
         }
     }
 }
