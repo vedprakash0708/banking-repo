@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/vedprakash0708/star-agile-banking-finance.git'
+                git branch: 'main', url: 'https://github.com/vedprakash0708/banking-repo.git'
             }
         }
         
