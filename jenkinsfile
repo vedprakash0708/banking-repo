@@ -2,15 +2,15 @@ pipeline {
     agent any
     
     environment {
-        AWS_ACCESS_KEY_ID = credentials('aws-access-key')
-        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
-        DOCKER_HUB_CREDENTIALS = credentials('docker-hub')
+        // Local development settings
+        DOCKER_HOST = "unix:///var/run/docker.sock"
+        MAVEN_HOME = tool 'Maven3'
     }
     
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/vedprakash0708/star-agile-banking-finance.git'
+                checkout scm
             }
         }
         
@@ -23,62 +23,21 @@ pipeline {
         stage('Test') {
             steps {
                 sh 'mvn test'
-                junit '**/target/surefire-reports/*.xml'
             }
         }
         
-        stage('Build Docker Image') {
+        stage('Docker Build') {
             steps {
                 script {
-                    docker.withRegistry('', env.DOCKER_HUB_CREDENTIALS) {
-                        dockerImage = docker.build("financeme/account-service:${env.BUILD_NUMBER}")
-                    }
+                    docker.build("financeme-account-service:${env.BUILD_ID}")
                 }
             }
         }
         
-        stage('Deploy to Test') {
+        stage('Run') {
             steps {
                 script {
-                    // Provision test infrastructure with Terraform
-                    dir('terraform/test') {
-                        sh 'terraform init'
-                        sh 'terraform apply -auto-approve'
-                    }
-                    
-                    // Configure test server with Ansible
-                    dir('ansible') {
-                        sh 'ansible-playbook -i inventory/test playbook.yml'
-                    }
-                    
-                    // Deploy to test environment
-                    sh "docker run -d -p 8082:8082 --name account-service-test financeme/account-service:${env.BUILD_NUMBER}"
-                    
-                    // Run automated tests
-                    sh 'mvn verify -Pselenium-tests'
-                }
-            }
-        }
-        
-        stage('Deploy to Prod') {
-            when {
-                expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
-            }
-            steps {
-                script {
-                    // Provision prod infrastructure with Terraform
-                    dir('terraform/prod') {
-                        sh 'terraform init'
-                        sh 'terraform apply -auto-approve'
-                    }
-                    
-                    // Configure prod server with Ansible
-                    dir('ansible') {
-                        sh 'ansible-playbook -i inventory/prod playbook.yml'
-                    }
-                    
-                    // Deploy to prod environment
-                    sh "docker run -d -p 8082:8082 --name account-service-prod financeme/account-service:${env.BUILD_NUMBER}"
+                    docker.image("financeme-account-service:${env.BUILD_ID}").run('-p 8080:8080')
                 }
             }
         }
@@ -86,11 +45,12 @@ pipeline {
     
     post {
         always {
-            // Clean up
-            sh 'docker system prune -f'
-            
-            // Archive artifacts
-            archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+            echo 'Pipeline completed - cleaning up'
+            script {
+                // Stop and remove containers
+                sh 'docker stop $(docker ps -q) || true'
+                sh 'docker rm $(docker ps -a -q) || true'
+            }
         }
     }
 }
