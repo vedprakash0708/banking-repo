@@ -57,11 +57,11 @@ pipeline {
     
     post {
         always {
-            // Clean up
-            sh 'docker system prune -f'
-            
-            // Archive artifacts
+            // Archive artifacts without using sh
             archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+            
+            // Clean up workspace (alternative to docker system prune)
+            cleanWs()
         }
     }
 }
