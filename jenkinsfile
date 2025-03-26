@@ -3,7 +3,9 @@ pipeline{
     stages{
         stage('checkout the code from github'){
             steps{
-                 git url: 'https://github.com/vedprakash0708/banking-repo/'
+                git branch: 'main', // Changed from 'master' to 'main'
+                     url: 'https://github.com/vedprakash0708/banking-repo.git'
+
                  echo 'github url checkout'
             }
         }
