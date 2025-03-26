@@ -1,10 +1,15 @@
 pipeline {
     agent any
     
+    environment {
+        DOCKER_HUB_CREDENTIALS = credentials('docker-hub')
+    }
+    
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/vedprakash0708/banking-repo.git'
+                git branch: 'main', 
+                url: 'https://github.com/vedprakash0708/banking-repo.git'
             }
         }
         
@@ -24,36 +29,33 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // For local Docker without credentials
-                    dockerImage = docker.build("financeme/account-service:${env.BUILD_NUMBER}")
+                    docker.withRegistry('', env.DOCKER_HUB_CREDENTIALS) {
+                        dockerImage = docker.build("financeme/account-service:${env.BUILD_NUMBER}")
+                        dockerImage.push()
+                    }
                 }
             }
         }
         
         stage('Deploy to Local') {
-    steps {
-        script {
-            docker.withTool('docker-compose') {
-                sh 'docker-compose -f Docker-compose.yml down || true'
-                sh "sed -i 's|financeme/account-service:.*|financeme/account-service:${env.BUILD_NUMBER}|g' Docker-compose.yml"
-                sh 'docker-compose -f Docker-compose.yml up -d'
+            steps {
+                script {
+                    sh 'docker-compose -f Docker-compose.yml down || true'
+                    sh """
+                    sed -i 's|financeme/account-service:.*|financeme/account-service:${env.BUILD_NUMBER}|g' Docker-compose.yml
+                    """
+                    sh 'docker-compose -f Docker-compose.yml up -d'
+                }
             }
         }
     }
-}
     
     post {
         always {
             script {
-                // Local cleanup commands
-                try {
-                    sh 'docker system prune -f'
-                } catch (Exception e) {
-                    echo "Docker cleanup failed: ${e.message}"
-                }
-                
-                // Archive artifacts within node context
-                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                archiveArtifacts artifacts: 'target/*.jar', 
+                fingerprint: true
+                sh 'docker system prune -f || true'
             }
         }
     }
